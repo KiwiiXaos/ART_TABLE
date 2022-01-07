@@ -14,15 +14,17 @@ python3 interface.py
 ```
 Note that the project is coded to use an external webcam. ```capture = cv.VideoCapture(1)```
 
-## How does it works :
-
-Art Table Architecture is physically composed of a camera and a projector which provide respectively the input and output. The project is coded in Python and works with Pytorch, OpenCV and Pygame.
-
-To use the AR Interface, we’re using Hand gesture recognition with Mediapipe and a classification full linear model. It has seven output in total. Currently, only the thumb up gesture is used to project the lineart.
-
 ## Dependencies :
 - Torch
 - Pygame
 - numpy
 - mediapipe
 - PIL
+
+## How does it works :
+
+Art Table Architecture is physically composed of a camera and a projector which provide respectively the input and output. The project is coded in Python and works with Pytorch, OpenCV and Pygame.
+
+To use the AR Interface, we’re using Hand gesture recognition with Mediapipe and a classification full linear model. It has seven output in total. Currently, only the thumb up gesture is used to project the lineart.
+
+
