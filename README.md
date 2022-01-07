@@ -7,10 +7,13 @@ Art Table is an interactive AR platform to draw. The user is able to draw on a s
   </p>
 
 
-How to run the project :
+## How to run the project : ##
 
 ```python
 python3 interface.py 
 ```
 Note that the project is coded to use an external webcam. ```capture = cv.VideoCapture(1)```
 
+## How does it works #
+
+Art table works
