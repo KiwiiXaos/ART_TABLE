@@ -51,6 +51,8 @@ def Extra(Ref, vid, quota):
     matches = bf.match(ref_desc, fr_desc)
 
     # DEBUG
+    
+    '''
 
     final_img = cv.drawMatches(Ref, ref_keypts,
     Frame, fr_keypts, matches[:20],None)
@@ -58,6 +60,7 @@ def Extra(Ref, vid, quota):
     # Show the final image
     #cv.imshow("Matches", final_img)
     cv.imwrite("test.png", final_img)
+    '''
     ### END DEBUG
     #print(matches)
 
@@ -71,25 +74,13 @@ def Extra(Ref, vid, quota):
         # compute Homography
         M, mask = cv.findHomography(ref_pts, fr_pts, cv.RANSAC, 5.0)
         print(Ref)
-        #squareRef =np.float32([[0,0],[0,Ref.shape(0)-1],])
 
         return matches
     else: return None
 # TRACKING ?
 
-def Homography():
-    # assuming matches stores the matches found and 
-    # returned by bf.match(des_model, des_frame)
-    # differenciate between source points and destination points
-    #src_pts = np.float32([kp_model[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-    #dst_pts = np.float32([kp_frame[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-    # compute Homography
-    #M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
-    pass
 
 
-#print("hzy")
-#Extraction(image, image2, 10)
 
 def ScanPicture(image, ratio = 500):
     #image = cv.imread("image.jpg")
@@ -103,10 +94,6 @@ def ScanPicture(image, ratio = 500):
     adjusted = gray # = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
 
     edged = cv.Canny(adjusted, 75, 200)
-    # show the original image and the edge detected image
-    #print("STEP 1: Edge Detection")
-    #cv.imshow("Image", image)
-    #cv.imshow("Edged", edged)
 
     cnts = cv.findContours(edged.copy(), cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
@@ -162,14 +149,7 @@ def main() -> int:
     im = ScanPicture(image)
     im = Grib(im)
 
-    
-
-    #Extraction(10)
-    
-    print("all done")
-    #While(0):
-     #   pass
-     #   ref = "image.jpg"
+        
     
 
 
