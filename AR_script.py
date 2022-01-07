@@ -9,9 +9,6 @@ from grib import *
 from PIL import ImageOps
 
 
-#vid = cv.VideoCapture(0)
-#image = cv.imread("image.png")
-#image2 = cv.imread("image.png")
 
 
 
@@ -26,9 +23,7 @@ def Extraction(quota):
 
 
     while (True):
-        print("hey")
         ScanPicture(Frame, ratio=500)
-        #Extra(Ref, capture, quota)
         
     cv.destroyAllWindows()
     capture.release()
@@ -77,11 +72,11 @@ def Extra(Ref, vid, quota):
 
         return matches
     else: return None
-# TRACKING ?
 
 
 
 
+# Part of this code is based from pyimagesearch.
 def ScanPicture(image, ratio = 500):
     #image = cv.imread("image.jpg")
 
@@ -111,15 +106,7 @@ def ScanPicture(image, ratio = 500):
     # show the contour (outline) of the piece of paper
     print("STEP 2: Find contours of paper")
     cv.drawContours(image, [screenCnt], -1, (0, 255, 0), 2)
-    #cv.imshow("Outline", image)
-    #cv2.waitKey(0)
-    #cv2.destroyAllWindows()
-
-    # apply the four point transform to obtain a top-down
-    # view of the original image
     warped = four_point_transform(orig, screenCnt.reshape(4, 2) * ratio)
-    # convert the warped image to grayscale, then threshold it
-    # to give it that 'black and white' paper effect
     warped = cv.cvtColor(warped, cv.COLOR_BGR2GRAY)
     print("wraped", warped.shape)
 
@@ -135,8 +122,6 @@ def ScanPicture(image, ratio = 500):
     print(warped)
     # show the original and scanned images
     print("STEP 3: Apply perspective transform")
-    #cv.imshow("Original", imutils.resize(orig, height = 650))
-    #cv.imshow("Scanned", imutils.resize(warped, height = 650))
     cv.imwrite("./model.png", warped2)
     return warped2
 
