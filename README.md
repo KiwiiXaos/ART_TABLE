@@ -14,6 +14,6 @@ python3 interface.py
 ```
 Note that the project is coded to use an external webcam. ```capture = cv.VideoCapture(1)```
 
-## How does it works :#
+## How does it works :
 
-Art table works
+Art Table Architecture is physically composed of a camera and a projector which provide respectively the input and output. The project is coded in Python and works with Pytorch, OpenCV and Pygame.
