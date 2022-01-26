@@ -29,7 +29,11 @@ from PIL import Image
 
 def LoadEval(sketch):
 
-  
+  #sketch = Image.open("./testa.png").convert('L')
+  print("who are you",type(sketch), sketch.shape)
+  #sketch = Image.fromarray(sketch)
+  #sketch = sketch.convert('L')
+  print(sketch)
   sketch = np.array(sketch)[None, ...]
   while sketch.shape[2] % 8 != 0:
       sketch = np.delete(sketch, 0, 2)
@@ -61,7 +65,14 @@ def Grib(image):
   output = output * 255
   output = output.detach()
   output = output.cpu().numpy()
- 
+  '''
+  test = test * 266
+  #test = test.detach()
+  test = test.cpu().numpy()
+
+
+  test = np.squeeze(test)
+  '''
   stock = np.stack((test,)*3, axis=-1).astype(np.uint8)
 
   wow = np.squeeze(output)

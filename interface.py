@@ -3,18 +3,26 @@ from PIL import Image
 import PIL.Image
 import time
 import mediapipe
-from threading import Thread
+from threading import Thread, Lock
 import numpy as np
 import pygame
 import torch
 import matplotlib
-
+import errno
+import socket
 from grib import *
 from AR_script import *
 from hand_model import HandPosModel
+#from interface import *
+from paint import *
+import fcntl, os
 
 
-ref = ["dessin", "posé","index","main fermée", "cercle","écartée","pouce" ]
+from multiprocessing import Process
+import multiprocessing
+
+
+ref = ["sketch", "posé","index","main fermée", "cercle","écartée","pouce" ]
 
 # Hand class, deal with gesture label, coordinate calibration, and updating Pygame.
 class Hands():
@@ -26,54 +34,63 @@ class Hands():
         self.label = 0
         self.labeled_gesture = ref[self.label] # jsp
         self.screen = screen
+        self.myfont = myfont
         screen.blit(self.affichage.image, (100,100))
 
     # Update the Index coordinates and hand gesture label
     def H_update_video(self, id, results, hands, frame, model): 
-        for handLandmarks in results.multi_hand_landmarks: # Supprimer la boucle et gérer avec des ids !
-                    #drawingModule.draw_landmarks(frame, results.multi_hand_landmarks[0], handsModule.HAND_CONNECTIONS)
-                    j = 0
-                    i =0
-                    tab = []
-                    for dataPoint in results.multi_hand_landmarks[id].landmark:
-                    
-                        tab.append(dataPoint.x)
-                        tab.append(dataPoint.y)
-
-                        print((dataPoint.x) * frame.shape[1],(dataPoint.y )* frame.shape[0] )
-
-                        if i == 12:
-                            self.Media_x = (dataPoint.x) * frame.shape[1]
-                            self.Media_y = (dataPoint.y) * frame.shape[0]
-                            #print((self.Media_x, self.Media_y))
+        #print("shape",len(results.multi_hand_landmarks), id)
+        if(len(results.multi_hand_landmarks) < id + 1):
+            return self
+        else:
+            for handLandmarks in results.multi_hand_landmarks: # Supprimer la boucle et gérer avec des ids !
+                        #drawingModule.draw_landmarks(frame, results.multi_hand_landmarks[0], handsModule.HAND_CONNECTIONS)
+                        j = 0
+                        i =0
+                        tab = []
+                        for dataPoint in results.multi_hand_landmarks[id].landmark:
+                        
+                            tab.append(dataPoint.x)
+                            tab.append(dataPoint.y)
 
 
-                            ## Calibration déplacée dans element.update
+                            if i == 8:
+                                #print("hellp",(dataPoint.x) * frame.shape[1],(dataPoint.y )* frame.shape[0] )
 
-                            '''
-                            print(dataPoint.x)
-                            if(dataPoint.x < array_calib[2][0] and dataPoint.x > array_calib[3][0] and dataPoint.y < array_calib[2][1] and dataPoint.y > array_calib[3][1]):
-                                #print("YAYAYAY")
-                                self.Media_x = (dataPoint.x - array_calib[3][0] )/(array_calib[2][0]-array_calib[3][0])
-                                self.Media_y = (dataPoint.y - array_calib[3][1] )/(array_calib[2][1] - array_calib[3][1])
-                            '''
+                                self.Media_x = (dataPoint.x) * frame.shape[1] #frame.shape[1]
+                                self.Media_y = (dataPoint.y) * frame.shape[0]
+                                #print((self.Media_x, self.Media_y))
 
-                    
 
-                    inp = torch.from_numpy(np.array([tab]))
-                    label = model(inp.float())
-                    self.label = torch.argmax(label, 1)[0]
-    
-        return self
+                                ## Calibration déplacée dans element.update
+
+                                '''
+                                print(dataPoint.x)
+                                if(dataPoint.x < array_calib[2][0] and dataPoint.x > array_calib[3][0] and dataPoint.y < array_calib[2][1] and dataPoint.y > array_calib[3][1]):
+                                    #print("YAYAYAY")
+                                    self.Media_x = (dataPoint.x - array_calib[3][0] )/(array_calib[2][0]-array_calib[3][0])
+                                    self.Media_y = (dataPoint.y - array_calib[3][1] )/(array_calib[2][1] - array_calib[3][1])
+                                '''
+
+                                #print("media_x",[self.Media_x, self.Media_y] )  
+                                #self.H_update_PyGame()         
+                                #self.affichage.update_PyGame([self.Media_x, self.Media_y])
+                            i += 1
+                        inp = torch.from_numpy(np.array([tab]))
+                        label = model(inp.float())
+                        self.label = torch.argmax(label, 1)[0]
+        
+            return self
 
 
     def H_update_PyGame(self, myfont):
 
-        print("SELFFF", self.Media_y)
+        #print("SELFFF", self.Media_y)
 
-        self.affichage.update_PyGame([self.Media_x, self.Media_y])
+        self.affichage.update_PyGame([self.Media_x, self.Media_y], False)
 
-        label_1 = myfont.render('Default_1', False, (0,0,0)) # Update and blit  calibrated coordinates
+        label_1 = self.myfont.render(str(ref[self.label]), False, (255,0,0)) # Update and blit  calibrated coordinates
+        #print("eh",self.affichage.coord[0] )
         self.screen.blit(label_1, (self.affichage.coord[0], self.affichage.coord[1] + 10))
 
         # Rajouter les events.. Les labels à l'affichage etc etc..
@@ -89,25 +106,36 @@ class Element():
         self.name = name
         self.image = pygame.image.load(name).convert_alpha()
         self.coord = [0,0] # Coordinates on pygame
+        self.refcoord = [0,0]
         self.calib = calib # The calibration reference
         self.track = [0,0] # The Coordinates on camera
         self.screen = screen
         self.check = hand
-    def update_PyGame(self,coord):
+        self.ref = [0, 0]
+    def update_PyGame(self,coord, move):
         self.track = coord
         x, y = self.screen.get_size()
 
         # Calibration !
         if(self.check == True):
+            #print("affichageee", self.track)
+
             if(self.track[0] < self.calib[2][0] and self.track[0] > self.calib[3][0] and self.track[1] < self.calib[2][1] and self.track[1] > self.calib[3][1]):
                 self.coord[0] = (self.track[0] - self.calib[3][0] )/(self.calib[2][0]-self.calib[3][0])
                 self.coord[1] = (self.track[1] - self.calib[3][1] )/(self.calib[2][1] - self.calib[3][1])
-                self.coord[0] = x - x*self.coord[0]
-                self.coord[1] = y - y*self.coord[1]
+                self.coord[0] = x - x*(self.coord[0]) -220
+                self.coord[1] = y - y*(self.coord[1]) -50
             
-            print(self.coord, x, y)
+            #print("done",self.coord, x, y)
             self.screen.blit(self.image, (self.coord))
-        else: self.screen.blit(self.image, (self.coord[0], self.coord[1])) # For debugging
+        else:
+            #print("elp",self.coord, coord, self.ref, self.refcoord) 
+            if( move == True):
+                
+                self.coord[0] = self.refcoord[0] + (coord[0] - self.ref[0])
+                self.coord[1] = self.refcoord[1] + (coord[1] - self.ref[1])
+                print("aaa", self.coord)
+            self.screen.blit(self.image, (self.coord[0], self.coord[1])) # For debugging
 
         
         #print("debug : calibrated coordinates", x - x*self.coord[0], x - x*self.coord[1]) 
@@ -115,11 +143,33 @@ class Element():
         return self
 
 
+def Video(liste_main, liste_art, array_calib, initp):
+    lock = Lock()
+
+    # Create new socket
+    #s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+    host = socket.gethostname()                           
+    '''
+
+    unblockSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+    host = socket.gethostname()                           
+
+    port = 9999
+
+    # connection to hostname on the port.
+    unblockSocket.connect((host, port))                               
+    print("slt")
+    unblockSocket.send("init".encode())
+    fcntl.fcntl(unblockSocket, fcntl.F_SETFL, os.O_NONBLOCK)
+    Thread(target = SockThr, args=(lock, unblockSocket )).start()
+    '''
+
+    
+
+    G, PC, F1 = InitPT()
 
 
-# Main LOOP 
-
-def Video(liste_main, liste_art, array_calib):
+    
     #PYGAME INITIALISATION
 
     clock = pygame.time.Clock()
@@ -139,6 +189,22 @@ def Video(liste_main, liste_art, array_calib):
     
     liste_main = [item.H_update_PyGame(myfont) for item in liste_main]
 
+    Button = pygame.image.load("Move_C.png").convert_alpha()
+    Button_scan = pygame.image.load("scanbut.png").convert_alpha()
+    Button_update = pygame.image.load("Pytorch_C.png").convert_alpha()
+    Button_pers = pygame.image.load("Pers_C.png").convert_alpha()
+
+
+
+
+    screen.blit(Button, (200, 100)) # For debugging
+    screen.blit(Button_scan, (200, 200))
+    screen.blit(Button_update, (200, 300))
+    screen.blit(Button_pers, (200, 400))
+
+
+
+
     pygame.display.flip()
 
 
@@ -148,9 +214,16 @@ def Video(liste_main, liste_art, array_calib):
     calibration = pygame.image.load("calib2.png").convert_alpha()
     screen.blit(calibration, (0,0))
     activate_1 = 0
+    activate_2 = 0
+    activate_3 = 0
+
+    debug = 0
+    move = False
+
+    process = [0]
     # Calibration Reference.
-    Ref = cv.imread("calib.png")
-    Ref = cv.cvtColor(Ref, cv.COLOR_BGR2GRAY)
+    Ref = cv2.imread("calib.png")
+    Ref = cv2.cvtColor(Ref, cv.COLOR_BGR2GRAY)
     
     # Mediapipe !
     drawingModule = mediapipe.solutions.drawing_utils
@@ -166,9 +239,12 @@ def Video(liste_main, liste_art, array_calib):
     model = HandPosModel()
     model.load_state_dict(torch.load('./vertical.ckpt',  map_location=torch.device('cpu'))) 
     model.eval()
+    
+    #G,PC,F1 = InitPT()
+
 
     # Some time to initialise.
-    time.sleep(5)
+    time.sleep(2)
     
     # Calibration.
     while(vid_init == 0):
@@ -200,20 +276,17 @@ def Video(liste_main, liste_art, array_calib):
                     array_calib_pg[1] = True
 
                     init= 1
-
-            
             else:
-
                 screen.fill((0, 0, 0))
 
                 # App FPS 
-                fps = myfont.render(str(int(clock.get_fps())), False, (255,0,255))
-                screen.blit(fps,(100,100))
+                #fps = myfont.render(str(int(clock.get_fps())), False, (255,0,255))
+                #screen.blit(fps,(100,100))
 
                 # Check the Labels
 
                 # If the label is index 
-                if(liste_main[0].label == 6): 
+                if(liste_main[0].label == 4 and process[0] == 0): 
                     # Debug Message 
                     houra = myfont.render("Scanner l'image", False, (255,255,255))
                     screen.blit(houra,(100,300))
@@ -222,28 +295,184 @@ def Video(liste_main, liste_art, array_calib):
                     if(activate_1 == 0):                    
                         activ_delay = pygame.time.get_ticks()
                         activate_1 = 1
+                        
 
                     else:
-                        if(pygame.time.get_ticks() - activ_delay > 5000): 
+                        if(pygame.time.get_ticks() - activ_delay > 2000): 
                             houra = myfont.render("activation", False, (255,255,255))
+                            print("led")
                             screen.blit(houra,(200,400))
                             activate_1 = 0
-
-
                             #Tracking(frame)
                             # Should initialise new thread.
+                            lock = Lock()
+                            #Thread(target = Thread_Process, args=(lock, frame, liste_art, screen, array_calib, process)).start()
                             image = ScanPicture(frame)
-
-                            # Add the scanned image 
+                            ya,xa,m, ww, hw = Paintorch_Gen(G,PC,F1)
                             liste_art.append(Element("Model.png", screen, array_calib, False))
-                            liste_art = [item.update_PyGame([100,100]) for item in liste_art]
 
-                            #Model 
-                            image = Grib(image)
-                            art = pygame.image.load("gribed.png").convert_alpha()
-
+                            liste_art[len(liste_art)-1].image = pygame.image.load("y_paintstorch2.png").convert_alpha()
+                            liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+                            initp[0] = True
+                            activ_delay = 0
                 else:
                     activate_1 = 0
+                    process[0] = 0
+                
+
+                # DESTROYYY
+
+                if(liste_main[0].label == 3 and process[0] == 0): 
+                    # Debug Message 
+                    houra = myfont.render(" DESTROY", False, (0,255,255))
+                    screen.blit(houra,(100,1000))
+
+                    if(activate_2 == 0):                    
+                        activ_delay = pygame.time.get_ticks()
+                        activate_2 = 1
+                        
+
+                    else:
+                        if(pygame.time.get_ticks() - activ_delay > 2000): 
+                            houra = myfont.render("destroy", False, (255,255,255))
+                            screen.blit(houra,(200,400))
+                            print("destroy")
+                            if liste_art:
+                                liste_art.pop()
+                            process[0] = 0
+                            activ_delay = 0
+    
+                            #Tracking(frame)
+                            # Should initialise new thread.
+                            #Thread(target = Thread_Process(frame, liste_art, screen, array_calib, process)).start()
+                else:
+                    activate_2 = 0
+                    process[0] = 0
+
+                
+
+
+
+                # Index MOVE
+                if(liste_main[0].label == 3):
+                    move = False
+                    process[0] = 0
+                    debug = 0
+
+                    
+
+                if(liste_main[0].label == 2 and process[0] == 0): 
+                    # Debug Message 
+                    houra = myfont.render(" Move Canvas", False, (0,255,255))
+                    screen.blit(houra,(100,1000))
+
+                    if(activate_3 == 0):  
+                        print("start")                  
+                        activ_delay = pygame.time.get_ticks()
+                        activate_3 = 1
+                
+                        
+
+                    else:
+                        print("ellp",pygame.time.get_ticks() - activ_delay)
+
+                        if(pygame.time.get_ticks() - activ_delay > 2000) and debug == 0: 
+                            process[0] = 1
+                            debug = 1
+                            print("ejejje")
+
+
+
+                            screen.blit(houra,(200,400))
+                            print("move")
+                            if liste_art:
+                                hb = Button.get_height()
+                                wb = Button.get_width()
+
+                                hb_s = Button_scan.get_height()
+                                wb_s = Button_scan.get_width()
+
+                                h = liste_art[len(liste_art)- 1].image.get_height()
+                                w = liste_art[len(liste_art)- 1].image.get_width()
+                                print(liste_main[0].affichage.coord[0], liste_art[len(liste_art)- 1].coord[0] ,liste_art[len(liste_art)- 1].coord[0] + w) #liste_art[len(liste_art)- 1].image.get_width(), )
+                                print(liste_main[0].affichage.coord[1], liste_art[len(liste_art)- 1].coord[1] ,liste_art[len(liste_art)- 1].coord[1] + h)
+
+                                if( liste_main[0].affichage.coord[0] >liste_art[len(liste_art)- 1].coord[0] and liste_main[0].affichage.coord[0] < (liste_art[len(liste_art)- 1].coord[0] + w) and  liste_main[0].affichage.coord[1] > liste_art[len(liste_art)- 1].coord[1] and liste_main[0].affichage.coord[1] <  (liste_art[len(liste_art)- 1].coord[1] + h)):
+                                    print("yes no")
+                                    move = True
+                                    liste_art[len(liste_art)- 1].ref[0] = liste_main[0].affichage.coord[0]
+                                    liste_art[len(liste_art)- 1].ref[1] = liste_main[0].affichage.coord[1]
+                                    liste_art[len(liste_art)-1].refcoord[0] = liste_art[len(liste_art)-1].coord[0]
+                                    liste_art[len(liste_art)-1].refcoord[1] = liste_art[len(liste_art)-1].coord[1]
+
+                                    print(liste_main[0].affichage.coord)
+
+                                if( liste_main[0].affichage.coord[0] >(700) and liste_main[0].affichage.coord[0] < (700 + wb) and  liste_main[0].affichage.coord[1] > 100 and liste_main[0].affichage.coord[1] <  (100 + hb)):
+                                    print("yes no")
+                                    move = True
+                                    liste_art[len(liste_art)- 1].ref[0] = liste_main[0].affichage.coord[0]
+                                    liste_art[len(liste_art)- 1].ref[1] = liste_main[0].affichage.coord[1]
+                                    liste_art[len(liste_art)-1].refcoord[0] = liste_art[len(liste_art)-1].coord[0]
+                                    liste_art[len(liste_art)-1].refcoord[1] = liste_art[len(liste_art)-1].coord[1]
+                            hb = Button.get_height()
+                            wb = Button.get_width()
+                            debug = 0
+                            print("ellp",liste_main[0].affichage.coord )
+
+                            if( liste_main[0].affichage.coord[0] >(900) and liste_main[0].affichage.coord[0] < (900 + wb) and  liste_main[0].affichage.coord[1] > 100 and liste_main[0].affichage.coord[1] <  (100 + hb)):
+                                print(" scanné !")
+
+                                image = ScanPicture(frame)
+                                # Add the scanned image 
+                                liste_art.append(Element("Model.png", screen, array_calib, False))
+                                lock.acquire()
+
+                                liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+                                lock.release()
+                                activate_3 = 0
+                            # Paintorch update
+                            print(initp)
+                            if( liste_main[0].affichage.coord[0] >(1100) and liste_main[0].affichage.coord[0] < (1100 + wb) and  liste_main[0].affichage.coord[1] > 100 and liste_main[0].affichage.coord[1] <  (100 + hb)):
+                                print(" maj maje !")
+
+                                if(initp[0] == True):
+                                    image = ScanPicture(frame)
+                                    ya =  Paintorch_Improve(xa,m,G,PC,F1, ww, hw)
+                                    liste_art[len(liste_art)-1].image = pygame.image.load("y_paintstorch2.png").convert_alpha()
+
+
+
+                                # Add the scanned image 
+                                #liste_art.append(Element("Model.png", screen, array_calib, False))
+                                #lock.acquire()
+
+                                liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+                                #lock.release()
+                                activate_3 = 0
+
+
+                                #if(liste_main[0].affichage.coord[0] < liste_art[len(liste_art)- 1].coord[0] and liste_main[0].affichage.coord[0] > liste_art[len(liste_art)- 1].coord[0] + w and liste_main[0].affichage.coord[1] < liste_art[len(liste_art)- 1].coord[1] and liste_main[0].affichage.coord[1] > liste_art[len(liste_art)- 1].coord[1] + h):
+
+
+                            #process[0] = 0
+                            activ_delay = 0
+    
+                            #Tracking(frame)
+                            # Should initialise new thread.
+                            #Thread(target = Thread_Process(frame, liste_art, screen, array_calib, process)).start()
+                            if( liste_main[0].affichage.coord[0] >(700) and liste_main[0].affichage.coord[0] < (700 + wb) and  liste_main[0].affichage.coord[1] > 500 and liste_main[0].affichage.coord[1] <  (500 + hb)):
+                                print(" grilllllel")
+
+                                #image = ScanPicture(frame)
+                                # Add the scanned image 
+                                liste_art.append(Element("grid.jpg", screen, array_calib, False))
+                                liste_art[len(liste_art)-1].coord = [800,150]
+
+                                #liste_art = [item.update_PyGame([100,100], False) for item in liste_art]                                activate_3 = 0
+                else:
+                    activate_3 = 0
+                    #process[0] = 0
+                    #move = False
                 
                 results = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
@@ -251,40 +480,134 @@ def Video(liste_main, liste_art, array_calib):
                     if event.type == pygame.QUIT:
                         done = True
 
+            # Socket update
+            
+            '''
+            try:
+                print("a")
+                msg = unblockSocket.recv(4096)
+            except socket.error as e:
+                print("b")
+                err = e.args[0]
+                if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+                    #sleep(1)
+                    print('No data available')
+                    continue
+                else:
+                    # a "real" error occurred
+                    print(e)
+                    sys.exit(1)
+            else:
+                print("yayayay")
+            '''
+                
+            
+
+            # got a message, do something :)
+
             # Update Pygame
             clock.tick(60)
-            liste_art = [item.update_PyGame([100,100]) for item in liste_art]
+            lock.acquire()
+            liste_art = [item.update_PyGame(liste_main[0].affichage.coord, move) for item in liste_art]
+            lock.release()
             liste_main = [item.H_update_PyGame(myfont) for item in liste_main]
+            screen.blit(Button, (700, 100)) # For debugging
+            screen.blit(Button_scan, (900, 100))
+            screen.blit(Button_update, (1100, 100))
+            screen.blit(Button_pers, (700, 500))
+
 
             pygame.display.flip()
         
            
             # Hand Label update and tracking
             if results.multi_hand_landmarks != None:
-                liste_main = [item.H_update_video(results, hands, frame, model) for item in liste_main]
+                liste_main = [item.H_update_video(0,results, hands, frame, model) for i, item in enumerate(liste_main)]
 
-                '''
-                j = 0
-
-
-                for handLandmarks in results.multi_hand_landmarks:
-                    drawingModule.draw_landmarks(frame, handLandmarks, handsModule.HAND_CONNECTIONS)
-                    #print(handLandmarks)
-
-                    i =0
-            
-                    tab = []
-                    # Hand Gesture Objectttt UPDATE ( faut initialiser avant ..)
-                    j += 1
-
-                    #print("tab. siz", len(tab))
-                '''
+               
 
 
 
     cv2.destroyAllWindows()
     capture.release()
     
+def SockThr(lock, unblockSocket,): 
+    try:
+        print("a")
+        msg = unblockSocket.recv(4096)
+    except socket.error as e:
+        print("b")
+        err = e.args[0]
+        if err == errno.EAGAIN or err == errno.EWOULDBLOCK:
+            #sleep(1)
+            print('No data available')
+            #continue
+        else:
+            # a "real" error occurred
+            print(e)
+            sys.exit(1)
+    else:
+        print("yayayay")
+
+
+def Thread_Process(lock, frame, liste_art, screen, array_calib, process):
+
+    lock.acquire()
+    image = ScanPicture(frame)
+    print("step0", type(image))
+
+
+
+    # Add the scanned image 
+    #liste_art.append(Element("Model.png", screen, array_calib, False))
+    #liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+    print("step1")
+    ##
+    
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
+
+
+    # get local machine name
+    host = socket.gethostname()                           
+
+    port = 9999
+
+    # connection to hostname on the port.
+    
+    s.connect((host, port))                               
+    print("slt")
+    s.send("work".encode())
+
+    reponse = s.recv(1024)           
+    if reponse != "":
+        #s.close()
+        print("The time got from the server is %s" % reponse.decode('ascii'))
+        s.send("aaaaa".encode())
+        print("xox")
+    print("alldone")
+    liste_art.append(Element("Model.png", screen, array_calib, False))
+
+    liste_art[len(liste_art)-1].image = pygame.image.load("y_paintstorch2.png").convert_alpha()
+    liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+    lock.release()
+
+    '''
+    image = Paintorch_Gen(G,PC,F1)
+    liste_art[len(liste_art)-1].image = pygame.image.load("y_paintstorch2.png").convert_alpha()
+    liste_art = [item.update_PyGame([100,100], False) for item in liste_art]
+
+    #Model 
+    
+    image = Grib(image)
+    art = pygame.image.load("gribed.png").convert_alpha()
+    liste_art[len(liste_art)-1].name = "gribed.png"
+    liste_art[len(liste_art)-1].image = pygame.image.load("gribed.png").convert_alpha()
+    liste_art = [item.update_PyGame([100,100]) for item in liste_art]
+    print("step3")
+    '''
+    process[0] = 0
+
 
 
 def Extraction(quota):
@@ -422,13 +745,14 @@ hand_loc =[0,0,0,0,0,0] # x1 y1 x2 y2 pos1 pos2
 operation = [0,0,0]
 liste_main = []
 liste_art = []
+initp = [False, False]
 #array_calib =[False, False, 0, 0]
 array_calib = [True, True, [1699.0, 813.0], [538.0, 186.0]]
 art_track = [0,0]
-array_calib_pg = [True, True, [1699.0, 813.0], [538.0, 186.0]]
+array_calib_pg =  [True, True, [1699.0, 813.0], [538.0, 186.0]]#[True, True, [1699.0, 813.0], [538.0, 186.0]]
 #class ImageTake():
 #Thread(target = Video).start()
-Video(liste_main, liste_art,array_calib)
+Video(liste_main, liste_art,array_calib, initp)
 #Projector()
 # Create a window and pass it to the Application object
 App(tkinter.Tk(), "ART_TABLE")
