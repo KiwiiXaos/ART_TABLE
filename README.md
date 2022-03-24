@@ -2,6 +2,8 @@
 
 https://we.tl/t-65koFzHWfT
 
+https://we.tl/t-FxYzunBhWU
+
 Art Table is an interactive AR platform to draw. The user is able to draw on a sheet of paper, the interface scans the sketch and generates a digital inked version.
 <p align="center">
 
