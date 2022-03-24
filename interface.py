@@ -59,7 +59,7 @@ class Hands():
 
                                 self.Media_x = (dataPoint.x) * frame.shape[1] #frame.shape[1]
                                 self.Media_y = (dataPoint.y) * frame.shape[0]
-                                #print((self.Media_x, self.Media_y))
+                                print("h",(self.Media_x, self.Media_y), frame.shape[1], frame.shape[0])
 
 
                                 ## Calibration déplacée dans element.update
@@ -123,8 +123,8 @@ class Element():
             if(self.track[0] < self.calib[2][0] and self.track[0] > self.calib[3][0] and self.track[1] < self.calib[2][1] and self.track[1] > self.calib[3][1]):
                 self.coord[0] = (self.track[0] - self.calib[3][0] )/(self.calib[2][0]-self.calib[3][0])
                 self.coord[1] = (self.track[1] - self.calib[3][1] )/(self.calib[2][1] - self.calib[3][1])
-                self.coord[0] = x - x*(self.coord[0]) -220
-                self.coord[1] = y - y*(self.coord[1]) -50
+                self.coord[0] = x - x*(self.coord[0]) -100#-220
+                self.coord[1] = y - y*(self.coord[1]) - 330
             
             #print("done",self.coord, x, y)
             self.screen.blit(self.image, (self.coord))
@@ -173,10 +173,10 @@ def Video(liste_main, liste_art, array_calib, initp):
     #PYGAME INITIALISATION
 
     clock = pygame.time.Clock()
-    WIDTH, HEIGHT = 1920,1080
+    WIDTH, HEIGHT = 1920,1200
     pygame.font.init()
     myfont = pygame.font.SysFont('Comic Sans MS', 30)
-    screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    screen = pygame.display.set_mode((0,0), pygame.FULLSCREEN)
     x, y = screen.get_size()
 
     # Calibration checking : DEBUG
@@ -232,6 +232,9 @@ def Video(liste_main, liste_art, array_calib, initp):
     # Start the Video ! 
 
     capture = cv2.VideoCapture(1)
+    #capture.open(1 + 1 + cv2.CAP_DSHOW)
+    capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
     # Hand Gesture Model ! 
     # hand_100epochs.ckpt is trained on horizontal dataset, 
@@ -374,17 +377,14 @@ def Video(liste_main, liste_art, array_calib, initp):
                         
 
                     else:
-                        print("ellp",pygame.time.get_ticks() - activ_delay)
 
                         if(pygame.time.get_ticks() - activ_delay > 2000) and debug == 0: 
                             process[0] = 1
                             debug = 1
-                            print("ejejje")
 
 
 
                             screen.blit(houra,(200,400))
-                            print("move")
                             if liste_art:
                                 hb = Button.get_height()
                                 wb = Button.get_width()
@@ -611,8 +611,8 @@ def Thread_Process(lock, frame, liste_art, screen, array_calib, process):
 
 
 def Extraction(quota):
-    capture = cv.VideoCapture(1)
-    Ref = cv.imread("calib2.png")
+    capture = cv2.VideoCapture(1)
+    Ref = cv2imread("calib2.png")
 
 
     Ref = cv.cvtColor(Ref, cv.COLOR_BGR2GRAY)
